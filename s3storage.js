@@ -17,6 +17,7 @@ var AWS = require('aws-sdk');
 var when = require('when');
 var util = require('util');
 var fs = require('fs');
+//const RED = require('node-red')
 
 var settings;
 var appname;
@@ -74,11 +75,40 @@ function prepopulateFlows(resolve) {
 
 
 var s3storage = {
-    init: function(_settings) {
+    init: function(_settings, _RED) {
         settings = _settings;
+        RED = _RED;
         s3BucketName = settings.awsS3Bucket ;
         appname = settings.awsS3Appname || require('os').hostname();
         AWS.config.region = settings.awsRegion || 'eu-west-1';
+
+        console.log("Starting S3 Storage driver V9...");
+
+        //console.log('Node-RED settings:', settings);
+        //console.log('Node-RED instance:', RED);
+       
+         // Listar y mostrar todas las propiedades y métodos de RED.nodes
+         /*
+        const nodeProperties = Object.getOwnPropertyNames(settings);
+        console.log("BEGIN: settings properties and methods:");
+        nodeProperties.forEach(prop => {
+            const descriptor = Object.getOwnPropertyDescriptor(settings, prop);
+            console.log(`${prop}: ${descriptor ? descriptor.value : ''}`);
+        });
+        console.log("END: settings properties and methods:");
+        */
+     
+        // Define una función para manejar el evento de inicio de flujos
+        function onFlowsFileChanged() {
+            console.log('S3 Storage: flow file changed');
+            RED.nodes.loadFlows();
+        }
+
+        // Escucha el evento 'flows:started'
+        RED.events.on('flows:started', () => {
+            console.log('S3 Storage: Node-RED runtime has started');
+            this.monitorFlows(onFlowsFileChanged);
+        });
             
         return when.promise(function(resolve,reject) {
             s3 = new AWS.S3();
@@ -279,8 +309,46 @@ var s3storage = {
                 }
             });
         });
-    }
+    },
+    monitorFlows: function(callback, interval = 5000) {
+        let lastModified = null;
 
+        console.log("S3 Storage: start flows monitoring");
+    
+        const checkForChanges = () => {
+
+            console.log("S3 Storage: checking for changes on flow.json...");
+
+            const params = {
+                Bucket: s3BucketName,
+                Key: `${appname}/flow.json`
+            };
+    
+            s3.headObject(params, (err, data) => {
+                if (err) {
+                    console.error('S3 Storage: Error fetching flow.json metadata:', err);
+                } else {
+                    const newLastModified = data.LastModified;
+                    if (lastModified && newLastModified > lastModified) {
+                        /*
+                        this.getFlows().then((currentFlow) => {
+                            callback(currentFlow);
+                        }).catch((err) => {
+                            console.error('Error fetching flows:', err);
+                        });
+                        */
+                        console.log("S3 Storage: detected changes on flow.json");
+                        callback();
+                    } else {
+                        console.log("S3 Storage: flow.json remains the same.");
+                    }
+                    lastModified = newLastModified;
+                }
+            });
+        };
+    
+        setInterval(checkForChanges, interval);
+    }
 };
 
 module.exports = s3storage;
