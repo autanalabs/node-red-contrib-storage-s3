@@ -26,6 +26,8 @@ var s3BucketName = null ;
 var currentFlowRev = {};
 var currentSettingsRev = null;
 var currentCredRev = null;
+var autoReloadFlows = false;
+var flowReloaderStarted = false;
 
 var libraryCache = {};
 
@@ -107,7 +109,10 @@ var s3storage = {
         // Escucha el evento 'flows:started'
         RED.events.on('flows:started', () => {
             console.log('S3 Storage: Node-RED runtime has started');
-            this.monitorFlows(onFlowsFileChanged);
+            if(autoReloadFlows && !flowReloaderStarted) {
+                this.monitorFlows(onFlowsFileChanged);
+                flowReloaderStarted = true;
+            }
         });
             
         return when.promise(function(resolve,reject) {
@@ -133,6 +138,14 @@ var s3storage = {
                 }
             });
         });
+    },
+
+    setAutoReloadFlows: function(flag) {
+        autoReloadFlows = flag;
+    },
+
+    getAutoReloadFlows: function() {
+        return autoReloadFlows;
     },
     
     getFlows: function() {
